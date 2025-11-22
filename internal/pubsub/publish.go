@@ -24,3 +24,39 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	})
 	return nil
 }
+
+type SimpleQueueType int
+
+const (
+	Durable SimpleQueueType = iota
+	Transient
+)
+
+func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, queueType SimpleQueueType) (*amqp.Channel, amqp.Queue, error) {
+	// Create a channel
+	channel, err := conn.Channel()
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to open channel: %w", err)
+	}
+
+	// Declare the queue with properties based on queueType
+	queue, err := channel.QueueDeclare(
+		queueName,
+		queueType == Durable,   // durable
+		queueType == Transient, // autoDelete
+		queueType == Transient, // exclusive
+		false,                  // noWait
+		nil,                    // args
+	)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to declare queue %q: %w", queueName, err)
+	}
+
+	// Bind the queue to the exchange
+	err = channel.QueueBind(queue.Name, key, exchange, false, nil)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to bind queue %q to exchange %q with key %q: %w", queue.Name, exchange, key, err)
+	}
+
+	return channel, queue, nil
+}
