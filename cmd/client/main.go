@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -45,6 +46,17 @@ func main() {
 	}
 	err = pubsub.SubscribeJSON(
 		conn,
+		routing.ExchangePerilTopic,
+		routing.WarRecognitionsPrefix,
+		routing.WarRecognitionsPrefix+".*",
+		pubsub.SimpleQueueDurable,
+		handlerWar(gs, publishCh),
+	)
+	if err != nil {
+		log.Fatalf("could not subscribe to war declarations: %v", err)
+	}
+	err = pubsub.SubscribeJSON(
+		conn,
 		routing.ExchangePerilDirect,
 		routing.PauseKey+"."+gs.GetUsername(),
 		routing.PauseKey,
@@ -53,18 +65,6 @@ func main() {
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to pause: %v", err)
-	}
-
-	err = pubsub.SubscribeJSON(
-		conn,
-		routing.ExchangePerilTopic,
-		"war",
-		routing.WarRecognitionsPrefix+".*",
-		pubsub.SimpleQueueDurable,
-		handlerWar(gs),
-	)
-	if err != nil {
-		log.Fatalf("could not subscribe to war queue: %v", err)
 	}
 
 	for {
@@ -111,4 +111,17 @@ func main() {
 			fmt.Println("unknown command")
 		}
 	}
+}
+
+func publishGameLog(publishCh *amqp.Channel, username, msg string) error {
+	return pubsub.PublishGob(
+		publishCh,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug+"."+username,
+		routing.GameLog{
+			Username:    username,
+			CurrentTime: time.Now(),
+			Message:     msg,
+		},
+	)
 }
