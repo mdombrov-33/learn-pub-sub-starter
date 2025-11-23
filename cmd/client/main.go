@@ -57,6 +57,13 @@ func main() {
 		return
 	}
 
+	/// Each game client should subscribe to moves from other players
+	err = pubsub.SubscribeJSON(rabbitmqConn, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, routing.ArmyMovesPrefix+".*", pubsub.Transient, handleArmyMove(state))
+	if err != nil {
+		fmt.Println("Failed to subscribe to army moves:", err)
+		return
+	}
+
 	// Setup graceful shutdown
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
@@ -75,6 +82,19 @@ func main() {
 
 		case "move":
 			state.CommandMove(input)
+			move, err := state.CommandMove(input)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			// Publish move
+			err = pubsub.PublishJSON(channel, routing.ExchangePerilTopic, string(routing.ArmyMovesPrefix)+"."+username, move)
+			if err != nil {
+				fmt.Println("Failed to publish move:", err)
+				continue
+			}
+			fmt.Println("Move published successfully")
 
 		case "status":
 			state.CommandStatus()
@@ -108,5 +128,12 @@ func handlePause(gs *gamelogic.GameState) func(routing.PlayingState) {
 	return func(state routing.PlayingState) {
 		defer fmt.Print("> ")
 		gs.HandlePause(state)
+	}
+}
+
+func handleArmyMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
+	return func(move gamelogic.ArmyMove) {
+		defer fmt.Print("> ")
+		gs.HandleMove(move)
 	}
 }
