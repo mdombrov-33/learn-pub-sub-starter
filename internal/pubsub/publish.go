@@ -61,13 +61,21 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, queu
 	return channel, queue, nil
 }
 
+type AckType int
+
+const (
+	Ack AckType = iota
+	NackRequeue
+	NackDiscard
+)
+
 func SubscribeJSON[T any](
 	conn *amqp.Connection,
 	exchange,
 	queueName,
 	key string,
 	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
-	handler func(T),
+	handler func(T) AckType,
 ) error {
 
 	// 1. Ensure queue exists and binding is done
@@ -85,21 +93,31 @@ func SubscribeJSON[T any](
 	// 3. Process messages in a goroutine
 	go func() {
 		for msg := range msgs {
+
 			var payload T
-			// 3a. Unmarshal JSON
 			if err := json.Unmarshal(msg.Body, &payload); err != nil {
 				fmt.Println("Failed to unmarshal JSON:", err)
+				fmt.Println("[NACK:discard] due to unmarshal error")
 				msg.Nack(false, false)
 				continue
 			}
 
-			// 3b. Call the handler
-			handler(payload)
+			ack := handler(payload)
 
-			// 3c. Acknowledge the message
-			msg.Ack(false)
+			switch ack {
+			case Ack:
+				fmt.Println("[ACK] message processed")
+				msg.Ack(false)
+
+			case NackRequeue:
+				fmt.Println("[NACK:requeue] handler requested retry")
+				msg.Nack(false, true)
+
+			case NackDiscard:
+				fmt.Println("[NACK:discard] handler requested drop")
+				msg.Nack(false, false)
+			}
 		}
 	}()
-
 	return nil
 }
