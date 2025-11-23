@@ -23,9 +23,9 @@ func main() {
 
 	//* Lightweight connection inside TCP connection for AMQP operations.
 	//* RabbitMQ uses channels so it can do multiple things concurrently over a single TCP connection.
-	channel, err := rabbitmqConn.Channel()
+	channel, _, err := pubsub.DeclareAndBind(rabbitmqConn, routing.ExchangePerilTopic, "game_logs", "game_logs.*", pubsub.Durable)
 	if err != nil {
-		fmt.Println("Failed to open a channel:", err)
+		fmt.Println("Failed to declare and bind queue:", err)
 		return
 	}
 

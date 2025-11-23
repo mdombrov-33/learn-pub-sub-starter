@@ -60,3 +60,46 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, queu
 
 	return channel, queue, nil
 }
+
+func SubscribeJSON[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
+	handler func(T),
+) error {
+
+	// 1. Ensure queue exists and binding is done
+	channel, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
+	if err != nil {
+		return fmt.Errorf("queue can't be bound to the exchange %q with key %q: %w", exchange, key, err)
+	}
+
+	// 2. Start consuming messages
+	msgs, err := channel.Consume(queue.Name, "", false, false, false, false, nil)
+	if err != nil {
+		return fmt.Errorf("failed to register a consumer for queue %q: %w", queue.Name, err)
+	}
+
+	// 3. Process messages in a goroutine
+	go func() {
+		for msg := range msgs {
+			var payload T
+			// 3a. Unmarshal JSON
+			if err := json.Unmarshal(msg.Body, &payload); err != nil {
+				fmt.Println("Failed to unmarshal JSON:", err)
+				msg.Nack(false, false)
+				continue
+			}
+
+			// 3b. Call the handler
+			handler(payload)
+
+			// 3c. Acknowledge the message
+			msg.Ack(false)
+		}
+	}()
+
+	return nil
+}

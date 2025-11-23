@@ -50,6 +50,13 @@ func main() {
 	// Create a new game state for this client
 	state := gamelogic.NewGameState(username)
 
+	// Subscribe to pause messages
+	err = pubsub.SubscribeJSON(rabbitmqConn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlePause(state))
+	if err != nil {
+		fmt.Println("Failed to subscribe to pause messages:", err)
+		return
+	}
+
 	// Setup graceful shutdown
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
@@ -94,5 +101,12 @@ func main() {
 		default:
 			// continue the loop
 		}
+	}
+}
+
+func handlePause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(state routing.PlayingState) {
+		defer fmt.Print("> ")
+		gs.HandlePause(state)
 	}
 }
